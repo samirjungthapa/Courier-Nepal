@@ -1,0 +1,3 @@
+{
+  "ignore": ["dev.sqlite", "node_modules", ".git"]
+}
