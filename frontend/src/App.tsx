@@ -76,7 +76,6 @@ function Navbar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileO
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const { unreadCount } = useSelector((s: RootState) => s.notifications);
-  const location = useLocation();
 
   useEffect(() => {
     if (token) {
@@ -85,8 +84,6 @@ function Navbar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileO
       return () => clearInterval(interval);
     }
   }, [dispatch, token]);
-
-  const isHome = location.pathname === "/";
 
   function onLogout() {
     dispatch(logout());
@@ -105,27 +102,23 @@ function Navbar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileO
 
         {/* Desktop Nav */}
         <nav className="navbar-nav">
-          {!isHome && (
+          {user?.role === "USER" && (
             <>
-              {user?.role === "USER" && (
-                <>
-                  <NavLink to="/dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Dashboard</NavLink>
-                  <NavLink to="/track" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Track</NavLink>
-                  <NavLink to="/create" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Schedule Pickup</NavLink>
-                  <NavLink to="/history" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Order History</NavLink>
-                  <NavLink to="/ai" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>AI Assistant</NavLink>
-                </>
-              )}
-              {user?.role === "ADMIN" && (
-                <NavLink to="/admin-dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Dashboard</NavLink>
-              )}
-              {user?.role === "SUPER_ADMIN" && (
-                <NavLink to="/super-admin-dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Dashboard</NavLink>
-              )}
-              {user?.role === "DELIVERY_STAFF" && (
-                <NavLink to="/delivery-staff-dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Dashboard</NavLink>
-              )}
+              <NavLink to="/dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Dashboard</NavLink>
+              <NavLink to="/track" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Track</NavLink>
+              <NavLink to="/create" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Schedule Pickup</NavLink>
+              <NavLink to="/history" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Order History</NavLink>
+              <NavLink to="/ai" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>AI Assistant</NavLink>
             </>
+          )}
+          {user?.role === "ADMIN" && (
+            <NavLink to="/admin-dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Dashboard</NavLink>
+          )}
+          {user?.role === "SUPER_ADMIN" && (
+            <NavLink to="/super-admin-dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Dashboard</NavLink>
+          )}
+          {user?.role === "DELIVERY_STAFF" && (
+            <NavLink to="/delivery-staff-dashboard" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>Dashboard</NavLink>
           )}
         </nav>
 
@@ -207,6 +200,8 @@ function AppInner() {
   const token = useSelector((s: RootState) => s.auth.token);
   const user = useSelector((s: RootState) => s.auth.user);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
+  const isHome = location.pathname === "/";
 
   useEffect(() => {
     if (token && !user) {
@@ -216,7 +211,7 @@ function AppInner() {
 
   return (
     <div className="app-shell">
-      <Navbar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      {!isHome && <Navbar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />}
 
       <main className="page-main">
         <Routes>
@@ -233,14 +228,7 @@ function AppInner() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route
-            path="/track"
-            element={
-              <RequireRole roles={["USER"]}>
-                <TrackParcelPage />
-              </RequireRole>
-            }
-          />
+          <Route path="/track" element={<TrackParcelPage />} />
           <Route
             path="/create"
             element={
@@ -308,9 +296,11 @@ function AppInner() {
         </Routes>
       </main>
 
-      <footer className="footer">
-        © {new Date().getFullYear()} Courier Nepal · Built for Nepal's courier needs
-      </footer>
+      {!isHome && (
+        <footer className="footer">
+          © {new Date().getFullYear()} Courier Nepal · Built for Nepal's courier needs
+        </footer>
+      )}
     </div>
   );
 }
