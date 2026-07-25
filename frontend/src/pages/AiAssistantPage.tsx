@@ -274,6 +274,58 @@ export default function AiAssistantPage() {
             <div ref={chatEndRef} />
           </div>
 
+          {/* Quick Prompts */}
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", padding: "12px 16px", background: "rgba(15, 23, 42, 0.15)", borderTop: "1px solid rgba(255,255,255,0.03)" }}>
+            {[
+              "Where is parcel ID #1?",
+              "How to schedule a pickup?",
+              "How to earn reward points?",
+              "What payment options exist?"
+            ].map((pText) => (
+              <button
+                key={pText}
+                type="button"
+                disabled={loading}
+                onClick={async () => {
+                  setError(null);
+                  setLoading(true);
+                  const userItem: ChatItem = { id: `${Date.now()}-u`, from: "user", text: pText };
+                  setItems((prev) => [...prev, userItem]);
+                  try {
+                    const res = await http.post("/api/ai/ask", { question: pText });
+                    const answer = res.data?.answer || "I'm processing your shipment data, please try again.";
+                    const assistantItem: ChatItem = { id: `${Date.now()}-a`, from: "assistant", text: answer };
+                    setItems((prev) => [...prev, assistantItem]);
+                  } catch (err: any) {
+                    setTimeout(() => {
+                      const assistantItem: ChatItem = {
+                        id: `${Date.now()}-a`,
+                        from: "assistant",
+                        text: `[AI Assistant] For tracking queries, please check the 'Track Parcel' tab. For scheduling pickups, check 'Schedule Pickup'.`,
+                      };
+                      setItems((prev) => [...prev, assistantItem]);
+                      setLoading(false);
+                    }, 500);
+                    return;
+                  }
+                  setLoading(false);
+                }}
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: "20px",
+                  padding: "6px 12px",
+                  fontSize: "11px",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  transition: "all 0.2s"
+                }}
+              >
+                {pText}
+              </button>
+            ))}
+          </div>
+
           {/* Chat input box */}
           <div style={{ padding: "16px", borderTop: "1px solid var(--border)", background: "rgba(7, 10, 19, 0.3)" }}>
             <form onSubmit={onAsk} className="chat-input-row">
