@@ -12,6 +12,9 @@ export type ParcelTrack = {
   parcelId: number;
   status: ParcelEvent["status"];
   events: ParcelEvent[];
+  receiverCity?: string | null;
+  receiverName?: string | null;
+  pickupCity?: string | null;
 };
 
 export type Payment = {

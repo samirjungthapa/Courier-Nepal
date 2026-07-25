@@ -70,10 +70,33 @@ export default function TrackParcelPage() {
     let width = (canvas.width = canvas.parentElement?.clientWidth || 500);
     let height = (canvas.height = 200);
 
-    const startX = width * 0.15;
-    const startY = height * 0.5;
-    const endX = width * 0.85;
-    const endY = height * 0.5;
+    const citiesCoords: Record<string, { x: number; y: number }> = {
+      "Kathmandu": { x: 0.58, y: 0.52 },
+      "Lalitpur": { x: 0.60, y: 0.58 },
+      "Bhaktapur": { x: 0.64, y: 0.53 },
+      "Pokhara": { x: 0.45, y: 0.40 },
+      "Chitwan": { x: 0.49, y: 0.68 },
+      "Hetauda": { x: 0.56, y: 0.72 },
+      "Biratnagar": { x: 0.88, y: 0.80 },
+      "Birgunj": { x: 0.54, y: 0.85 },
+      "Butwal": { x: 0.35, y: 0.58 },
+      "Itahari": { x: 0.84, y: 0.74 },
+      "Nepalgunj": { x: 0.22, y: 0.46 },
+      "Dhangadhi": { x: 0.10, y: 0.36 },
+      "Jumla": { x: 0.26, y: 0.26 },
+      "Mustang": { x: 0.42, y: 0.22 },
+    };
+
+    const pickupCity = parcels.tracking?.pickupCity || "Kathmandu";
+    const receiverCity = parcels.tracking?.receiverCity || "Pokhara";
+
+    const startCoord = citiesCoords[pickupCity] || citiesCoords["Kathmandu"];
+    const endCoord = citiesCoords[receiverCity] || citiesCoords["Pokhara"];
+
+    const startX = width * startCoord.x;
+    const startY = height * startCoord.y;
+    const endX = width * endCoord.x;
+    const endY = height * endCoord.y;
 
     let carProgress = 0;
     const targetProgress = currentStatusIndex / 4; // 0 to 1
@@ -81,51 +104,64 @@ export default function TrackParcelPage() {
     const drawTrack = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // Draw road line background
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-      ctx.lineWidth = 6;
+      // Draw all hubs as small dots in background
+      Object.entries(citiesCoords).forEach(([name, coord]) => {
+        const hx = width * coord.x;
+        const hy = height * coord.y;
+        
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.beginPath();
+        ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
+        ctx.font = "8px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(name, hx, hy - 8);
+      });
+
+      // Draw route path line background
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.lineWidth = 4;
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(startX, startY);
       ctx.lineTo(endX, endY);
       ctx.stroke();
 
-      // Draw completed road line (accent glow)
+      // Draw completed route path line (accent glow)
       if (carProgress > 0) {
-        ctx.strokeStyle = "var(--accent)";
-        ctx.lineWidth = 6;
+        ctx.strokeStyle = "var(--cyan)";
+        ctx.lineWidth = 4;
         ctx.shadowBlur = 10;
-        ctx.shadowColor = "var(--accent)";
+        ctx.shadowColor = "var(--cyan)";
         ctx.beginPath();
         ctx.moveTo(startX, startY);
-        ctx.lineTo(startX + (endX - startX) * carProgress, startY);
+        ctx.lineTo(startX + (endX - startX) * carProgress, startY + (endY - startY) * carProgress);
         ctx.stroke();
         ctx.shadowBlur = 0;
       }
 
-      // Hub nodes
-      const nodeCount = 5;
-      for (let i = 0; i < nodeCount; i++) {
-        const nodeX = startX + (endX - startX) * (i / (nodeCount - 1));
-        const active = i <= currentStatusIndex;
+      // Draw pulse ring at current package location
+      const vehicleX = startX + (endX - startX) * carProgress;
+      const vehicleY = startY + (endY - startY) * carProgress;
 
-        // Pulse ring for active nodes
-        if (active && i === currentStatusIndex) {
-          const ringPulse = 10 + Math.sin(Date.now() * 0.005) * 4;
-          ctx.fillStyle = "rgba(59, 130, 246, 0.2)";
-          ctx.beginPath();
-          ctx.arc(nodeX, startY, ringPulse, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      const ringPulse = 12 + Math.sin(Date.now() * 0.005) * 4;
+      ctx.fillStyle = "rgba(6, 182, 212, 0.15)";
+      ctx.beginPath();
+      ctx.arc(vehicleX, vehicleY, ringPulse, 0, Math.PI * 2);
+      ctx.fill();
 
-        ctx.fillStyle = active ? "var(--accent)" : "#1e293b";
-        ctx.strokeStyle = active ? "#fff" : "rgba(255,255,255,0.1)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(nodeX, startY, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
+      // Draw start and end station highlights
+      ctx.fillStyle = "var(--accent)";
+      ctx.beginPath();
+      ctx.arc(startX, startY, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = currentStatusIndex === 4 ? "var(--cyan)" : "#ef4444";
+      ctx.beginPath();
+      ctx.arc(endX, endY, 5, 0, Math.PI * 2);
+      ctx.fill();
 
       // Move delivery transport vehicle indicator (ease into position)
       if (carProgress < targetProgress) {
@@ -137,11 +173,10 @@ export default function TrackParcelPage() {
       }
 
       // Draw vehicle icon
-      const vehicleX = startX + (endX - startX) * carProgress;
       ctx.fillStyle = "#fff";
       ctx.font = "20px Inter";
       ctx.textAlign = "center";
-      ctx.fillText(currentStatusIndex === 4 ? "🎁" : "🚚", vehicleX, startY - 14);
+      ctx.fillText(currentStatusIndex === 4 ? "🎁" : "🚚", vehicleX, vehicleY - 14);
 
       animId = requestAnimationFrame(drawTrack);
     };
@@ -296,6 +331,46 @@ export default function TrackParcelPage() {
                       {parcels.tracking.status === "DELIVERED" ? "Completed" : "Within 24-48 Hours"}
                     </div>
                   </div>
+                </div>
+
+                {/* Courier Agent Profile Card */}
+                <div style={{
+                  background: "rgba(255, 255, 255, 0.02)",
+                  border: "1px solid rgba(255, 255, 255, 0.06)",
+                  borderRadius: "10px",
+                  padding: "16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginTop: "8px"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      background: "var(--gradient-primary)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "16px",
+                      fontWeight: 800,
+                      color: "#fff"
+                    }}>
+                      RT
+                    </div>
+                    <div>
+                      <div style={{ color: "#fff", fontSize: "13px", fontWeight: 700 }}>Rabin Thapa</div>
+                      <div style={{ color: "var(--text-muted)", fontSize: "11px" }}>★ 4.9 · Bajaj Pulsar (BA-2-PA-8989)</div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => alert("💬 Simulating live courier agent chat channel...")} 
+                    className="btn-secondary" 
+                    style={{ padding: "6px 12px", fontSize: "11px", border: "1px solid rgba(255,255,255,0.08)" }}
+                  >
+                    Message Agent
+                  </button>
                 </div>
               </div>
 

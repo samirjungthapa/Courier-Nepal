@@ -106,7 +106,14 @@ async function getTrack(req, res) {
     attributes: ["id", "status", "updatedByUserId", "createdAt"],
   });
 
-  return res.json({ parcelId: parcel.id, status: parcel.status, events });
+  return res.json({ 
+    parcelId: parcel.id, 
+    status: parcel.status, 
+    events,
+    receiverCity: parcel.receiverCity,
+    receiverName: parcel.receiverName,
+    pickupCity: parcel.pickupCity
+  });
 }
 
 async function assignStaff(req, res) {
