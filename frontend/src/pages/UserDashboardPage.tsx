@@ -14,7 +14,13 @@ export default function UserDashboardPage() {
   const [error, setError] = useState("");
   
   // Simulated Loyalty Rewards Points
-  const [points] = useState(380);
+  const [points, setPoints] = useState(380);
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [redeemedVoucher, setRedeemedVoucher] = useState<string | null>(null);
+
+  // Carbon footprint logic: 0.45 kg saved per KG of parcel thanks to green electric routing
+  const totalWeight = parcels.reduce((sum, p) => sum + (p.weightKg || 1.5), 0);
+  const carbonSaved = (totalWeight * 0.45).toFixed(2);
 
   async function fetchParcels() {
     setLoading(true);
@@ -47,17 +53,49 @@ export default function UserDashboardPage() {
         </div>
         
         {/* Loyalty badge */}
-        <div className="dark-card-sm" style={{ background: "rgba(6, 182, 212, 0.08)", borderColor: "rgba(6, 182, 212, 0.2)", display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "20px" }}>💎</span>
-          <div>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--cyan)", textTransform: "uppercase" }}>Loyalty Rewards</div>
-            <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff" }}>{points} Points</div>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <div className="dark-card-sm" style={{ background: "rgba(6, 182, 212, 0.08)", borderColor: "rgba(6, 182, 212, 0.2)", display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "20px" }}>💎</span>
+            <div>
+              <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--cyan)", textTransform: "uppercase" }}>Loyalty Rewards</div>
+              <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff" }}>{points} Points</div>
+            </div>
           </div>
+          <button
+            onClick={() => setShowRedeemModal(true)}
+            className="btn-primary"
+            style={{ padding: "8px 14px", fontSize: "12px", background: "var(--gradient-primary)", border: "none" }}
+          >
+            Redeem
+          </button>
         </div>
       </div>
 
+      {redeemedVoucher && (
+        <div style={{ 
+          background: "rgba(16, 185, 129, 0.15)", 
+          border: "1px solid rgba(16, 185, 129, 0.3)", 
+          padding: "12px 16px", 
+          borderRadius: "8px", 
+          color: "#fff", 
+          marginBottom: "20px", 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: "center",
+          fontSize: "14px"
+        }}>
+          <span>🎉 Voucher Redeemed! Use code <strong style={{ color: "var(--accent)" }}>{redeemedVoucher}</strong> for a discount on your next shipment.</span>
+          <button 
+            onClick={() => setRedeemedVoucher(null)} 
+            style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontWeight: 800 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "20px", marginBottom: "32px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "20px", marginBottom: "32px" }}>
         <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.4)", display: "flex", flexDirection: "column", gap: "6px" }}>
           <span style={{ fontSize: "28px" }}>📦</span>
           <span style={{ color: "var(--text-muted)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>Total Shipments</span>
@@ -76,6 +114,11 @@ export default function UserDashboardPage() {
           <h3 style={{ fontSize: "28px", color: "#fff" }}>
             {parcels.filter(p => p.status === "DELIVERED").length}
           </h3>
+        </div>
+        <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.4)", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <span style={{ fontSize: "28px" }}>🌱</span>
+          <span style={{ color: "var(--text-muted)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>Green CO₂ Saved</span>
+          <h3 style={{ fontSize: "28px", color: "var(--accent)" }}>{carbonSaved} kg</h3>
         </div>
         <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.4)", display: "flex", flexDirection: "column", gap: "6px" }}>
           <span style={{ fontSize: "28px" }}>🔥</span>
@@ -164,6 +207,43 @@ export default function UserDashboardPage() {
         </div>
       </div>
 
+      {/* Wholesaler Batch Manifest Dispatch Uploader */}
+      <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.45)", border: "1px solid rgba(255,255,255,0.04)", padding: "24px", marginBottom: "36px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+          <div>
+            <h3 style={{ fontSize: "16px", color: "#fff", fontFamily: "Poppins" }}>Wholesale Batch Manifest Dispatch</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "2px" }}>Upload a CSV manifest to register multiple client consignments simultaneously.</p>
+          </div>
+          <span style={{ fontSize: "11px", color: "var(--cyan)", background: "rgba(6, 182, 212, 0.08)", padding: "4px 8px", borderRadius: "4px", fontWeight: 700 }}>
+            Gold Merchant Tier Enabled
+          </span>
+        </div>
+
+        <div style={{
+          border: "2px dashed rgba(255,255,255,0.08)",
+          borderRadius: "12px",
+          padding: "32px",
+          textAlign: "center",
+          background: "rgba(7, 10, 19, 0.3)",
+          cursor: "pointer",
+          transition: "border-color 0.2s",
+        }}
+        onClick={() => {
+          // Simulate CSV import
+          const csvTemplate = `ReceiverName,ReceiverPhone,ReceiverAddress,ReceiverCity,Weight\nSamir Jung,9801234567,Lakeside,Pokhara,2.5\nAnkit Thapa,9841234567,New Road,Kathmandu,1.2\nSujal Shrestha,9851234567,Main Road,Biratnagar,4.0`;
+          const confirmUpload = window.confirm(`Simulating CSV upload with following manifest:\n\n${csvTemplate}\n\nProceed to batch dispatch?`);
+          if (confirmUpload) {
+            alert("🚀 Manifest processed! 3 new shipments successfully registered in the logistics dispatch system.");
+            fetchParcels();
+          }
+        }}
+        >
+          <span style={{ fontSize: "32px", display: "block", marginBottom: "8px" }}>📤</span>
+          <span style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>Click to upload batch manifest (.csv / .xls)</span>
+          <p style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "4px" }}>Max file size 5MB. Supports standard receiver name, phone, address, city, weight columns.</p>
+        </div>
+      </div>
+
       {/* Recent Shipments List */}
       <div>
         <h2 style={{ fontSize: "18px", color: "#fff", marginBottom: "16px", fontFamily: "Poppins" }}>Recent Shipments</h2>
@@ -220,6 +300,80 @@ export default function UserDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Redeem Rewards Modal */}
+      {showRedeemModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.8)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          backdropFilter: "blur(6px)"
+        }}>
+          <div className="dark-card" style={{ maxWidth: "450px", width: "90%", padding: "28px", border: "1px solid rgba(255,255,255,0.08)", background: "#0e1326", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
+            <h3 style={{ color: "#fff", marginBottom: "12px", fontFamily: "Poppins" }}>Redeem Loyalty Points</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "13px", marginBottom: "20px" }}>
+              Exchange your reward points for exclusive shipping discounts. Your balance: <strong style={{ color: "var(--cyan)" }}>{points} Points</strong>
+            </p>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                <div>
+                  <div style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>10% Off Single Shipment</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "11px" }}>Cost: 100 Points</div>
+                </div>
+                <button 
+                  disabled={points < 100}
+                  onClick={() => {
+                    setPoints(prev => prev - 100);
+                    setRedeemedVoucher("NEPAL-ECO-10");
+                    setShowRedeemModal(false);
+                  }}
+                  className="btn-primary"
+                  style={{ padding: "6px 12px", fontSize: "11px", border: "none" }}
+                >
+                  Redeem
+                </button>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                <div>
+                  <div style={{ color: "#fff", fontSize: "13px", fontWeight: 600 }}>25% Off Single Shipment</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "11px" }}>Cost: 250 Points</div>
+                </div>
+                <button 
+                  disabled={points < 250}
+                  onClick={() => {
+                    setPoints(prev => prev - 250);
+                    setRedeemedVoucher("NEPAL-ECO-25");
+                    setShowRedeemModal(false);
+                  }}
+                  className="btn-primary"
+                  style={{ padding: "6px 12px", fontSize: "11px", border: "none" }}
+                >
+                  Redeem
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button 
+                onClick={() => setShowRedeemModal(false)}
+                className="btn-secondary"
+                style={{ padding: "8px 16px", fontSize: "13px" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
