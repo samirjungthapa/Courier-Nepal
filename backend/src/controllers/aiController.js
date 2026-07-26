@@ -56,6 +56,10 @@ function answerForQuestion(question, context = {}) {
   return "I can assist you with real-time parcel tracking, pickup schedules, digital payments, loyalty rewards, and green routing. Try asking something like 'How do I schedule a pickup?' or 'Where is my parcel?'";
 }
 
+/**
+ * Handles incoming chat support queries by passing user context (active shipments,
+ * profile data) to the Gemini model or utilizing offline fallback logic.
+ */
 async function ask(req, res) {
   requireValidation(req);
   const question = req.body.question;
