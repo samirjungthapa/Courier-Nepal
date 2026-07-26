@@ -7,6 +7,10 @@ import { playBeep, playSweep } from "../utils/audio";
 
 type ChatItem = { id: string; from: "user" | "assistant"; text: string };
 
+/**
+ * AiAssistantPage contains chatbot panels with context-aware API integrations,
+ * pathfinding visualizers with vehicle animations, and 3D volumetric package estimators.
+ */
 export default function AiAssistantPage() {
   const [activeTab, setActiveTab] = useState<"chat" | "route" | "predict">("chat");
 
