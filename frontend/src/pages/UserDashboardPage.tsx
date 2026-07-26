@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { RootState } from "../store/store";
 import { http } from "../api/http";
 import StatusBadge from "../components/ui/StatusBadge";
+import { playChime } from "../utils/audio";
 
 type ParcelData = any;
 
@@ -17,6 +18,11 @@ export default function UserDashboardPage() {
   const [points, setPoints] = useState(380);
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [redeemedVoucher, setRedeemedVoucher] = useState<string | null>(null);
+
+  // Active invoice details modal state
+  const [activeInvoiceParcel, setActiveInvoiceParcel] = useState<ParcelData | null>(null);
+  // Carbon milestones details drawer/modal state
+  const [showCarbonDetails, setShowCarbonDetails] = useState(false);
 
   // Carbon footprint logic: 0.45 kg saved per KG of parcel thanks to green electric routing
   const totalWeight = parcels.reduce((sum, p) => sum + (p.weightKg || 1.5), 0);
@@ -38,9 +44,15 @@ export default function UserDashboardPage() {
     fetchParcels();
   }, []);
 
-  // Simulate PDF Invoice download
+  // Set active invoice parcel for rendering the interactive receipt modal
   const handleDownloadInvoice = (parcelId: number) => {
-    alert(`📥 PDF Invoice generated for Parcel #${parcelId}. Initializing print download...`);
+    const selected = parcels.find(p => p.id === parcelId);
+    if (selected) {
+      setActiveInvoiceParcel(selected);
+    } else {
+      // Fallback fallback if not in the sliced list
+      setActiveInvoiceParcel({ id: parcelId, receiverName: "Valued Receiver", receiverPhone: "N/A", receiverAddressLine1: "Transit Point", status: "PENDING_PICKUP", weightKg: 1.5 });
+    }
   };
 
   return (
@@ -115,10 +127,34 @@ export default function UserDashboardPage() {
             {parcels.filter(p => p.status === "DELIVERED").length}
           </h3>
         </div>
-        <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.4)", display: "flex", flexDirection: "column", gap: "6px" }}>
+        <div 
+          onClick={() => setShowCarbonDetails(true)}
+          className="dark-card" 
+          style={{ 
+            background: "rgba(15, 23, 42, 0.4)", 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: "6px",
+            cursor: "pointer",
+            border: "1px solid rgba(16, 185, 129, 0.2)",
+            boxShadow: "0 0 15px rgba(16, 185, 129, 0.05)",
+            transition: "all 0.3s ease"
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-2px)";
+            e.currentTarget.style.borderColor = "var(--accent)";
+            e.currentTarget.style.boxShadow = "0 0 20px rgba(16, 185, 129, 0.2)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.borderColor = "rgba(16, 185, 129, 0.2)";
+            e.currentTarget.style.boxShadow = "0 0 15px rgba(16, 185, 129, 0.05)";
+          }}
+        >
           <span style={{ fontSize: "28px" }}>🌱</span>
           <span style={{ color: "var(--text-muted)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>Green CO₂ Saved</span>
           <h3 style={{ fontSize: "28px", color: "var(--accent)" }}>{carbonSaved} kg</h3>
+          <span style={{ fontSize: "9px", color: "var(--accent)", fontWeight: 700, textTransform: "uppercase", marginTop: "2px" }}>View Milestones ➔</span>
         </div>
         <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.4)", display: "flex", flexDirection: "column", gap: "6px" }}>
           <span style={{ fontSize: "28px" }}>🔥</span>
@@ -334,6 +370,7 @@ export default function UserDashboardPage() {
                     setPoints(prev => prev - 100);
                     setRedeemedVoucher("NEPAL-ECO-10");
                     setShowRedeemModal(false);
+                    playChime();
                   }}
                   className="btn-primary"
                   style={{ padding: "6px 12px", fontSize: "11px", border: "none" }}
@@ -353,6 +390,7 @@ export default function UserDashboardPage() {
                     setPoints(prev => prev - 250);
                     setRedeemedVoucher("NEPAL-ECO-25");
                     setShowRedeemModal(false);
+                    playChime();
                   }}
                   className="btn-primary"
                   style={{ padding: "6px 12px", fontSize: "11px", border: "none" }}
@@ -370,6 +408,230 @@ export default function UserDashboardPage() {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+      {/* Premium Carbon Footprint Milestones Modal */}
+      {showCarbonDetails && (() => {
+        const carbonVal = parseFloat(carbonSaved);
+        let tierName = "Eco Sprout";
+        let target = 5.0;
+        let prevTarget = 0.0;
+        let badgeEmoji = "🌱";
+        let tierColor = "#10B981";
+        let nextTier = "Green Partner";
+        
+        if (carbonVal >= 30) {
+          tierName = "Forest Guardian";
+          target = 100.0;
+          prevTarget = 30.0;
+          badgeEmoji = "🌳";
+          tierColor = "#059669";
+          nextTier = "Max Level Reached";
+        } else if (carbonVal >= 15) {
+          tierName = "Carbon Hero";
+          target = 30.0;
+          prevTarget = 15.0;
+          badgeEmoji = "🌿";
+          tierColor = "#06b6d4";
+          nextTier = "Forest Guardian";
+        } else if (carbonVal >= 5) {
+          tierName = "Green Partner";
+          target = 15.0;
+          prevTarget = 5.0;
+          badgeEmoji = "🍃";
+          tierColor = "#a855f7";
+          nextTier = "Carbon Hero";
+        }
+        
+        const progressPercentage = Math.min(100, Math.max(0, ((carbonVal - prevTarget) / (target - prevTarget)) * 100));
+
+        return (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.85)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 1000,
+            backdropFilter: "blur(8px)"
+          }}>
+            <div className="dark-card" style={{ maxWidth: "520px", width: "95%", padding: "32px", border: "1px solid rgba(16, 185, 129, 0.3)", background: "#080c18", boxShadow: "0 25px 50px rgba(0,0,0,0.6)", borderRadius: "16px", textAlign: "center" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--accent)", textTransform: "uppercase" }}>🌱 Green Eco-Registry</span>
+                <button onClick={() => setShowCarbonDetails(false)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: "18px" }}>✕</button>
+              </div>
+
+              {/* Animated Tree SVG */}
+              <div style={{ height: "150px", display: "flex", justifyContent: "center", alignItems: "center", position: "relative", marginBottom: "16px" }}>
+                <svg viewBox="0 0 100 100" style={{ width: "120px", height: "120px", overflow: "visible" }}>
+                  <defs>
+                    <linearGradient id="trunk-grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#78350f" />
+                      <stop offset="100%" stopColor="#451a03" />
+                    </linearGradient>
+                    <linearGradient id="leaf-grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={tierColor} />
+                      <stop offset="100%" stopColor="#064e3b" />
+                    </linearGradient>
+                  </defs>
+                  
+                  {/* Soil/Ground */}
+                  <ellipse cx="50" cy="90" rx="35" ry="6" fill="#1e293b" />
+                  
+                  {/* Trunk - thicker or taller based on carbon offset */}
+                  <path 
+                    d={`M 46 90 L 48 55 Q 50 ${40 - Math.min(15, carbonVal)} 52 55 L 54 90 Z`} 
+                    fill="url(#trunk-grad)" 
+                  />
+                  
+                  {/* Growing Foliage SVG Groups based on Carbon offset */}
+                  <circle cx="50" cy={50 - Math.min(10, carbonVal)} r={Math.min(25, 12 + carbonVal * 0.5)} fill="url(#leaf-grad)" opacity="0.85" />
+                  {carbonVal >= 5 && <circle cx="38" cy={45 - Math.min(10, carbonVal)} r="12" fill="url(#leaf-grad)" opacity="0.9" />}
+                  {carbonVal >= 15 && <circle cx="62" cy={45 - Math.min(10, carbonVal)} r="12" fill="url(#leaf-grad)" opacity="0.9" />}
+                  {carbonVal >= 30 && <circle cx="50" cy={30 - Math.min(10, carbonVal)} r="14" fill="#10B981" opacity="0.95" />}
+                  
+                  {/* Glow Ring */}
+                  <circle cx="50" cy="50" r="40" fill="none" stroke={tierColor} strokeDasharray="3, 3" strokeWidth="1" opacity="0.4" className="animate-spin" style={{ transformOrigin: "center" }} />
+                </svg>
+
+                {/* Badge Emoji Overlay */}
+                <div style={{ position: "absolute", bottom: "10px", right: "180px", background: "#0e1326", border: `2px solid ${tierColor}`, borderRadius: "50%", width: "40px", height: "40px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", boxShadow: "0 4px 12px rgba(0,0,0,0.4)" }}>
+                  {badgeEmoji}
+                </div>
+              </div>
+
+              <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#fff", marginBottom: "4px" }}>{tierName}</h2>
+              <p style={{ color: "var(--text-muted)", fontSize: "13px", marginBottom: "20px" }}>
+                You have prevented <strong style={{ color: "var(--accent)" }}>{carbonSaved} kg</strong> of carbon emissions from entering Nepal's atmosphere!
+              </p>
+
+              {/* Progress Bar */}
+              <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: "10px", height: "8px", position: "relative", marginBottom: "8px", overflow: "hidden" }}>
+                <div style={{ width: `${progressPercentage}%`, background: `linear-gradient(90deg, ${tierColor}, var(--accent))`, height: "100%", borderRadius: "10px", transition: "width 1s ease" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-muted)", marginBottom: "24px" }}>
+                <span>{prevTarget.toFixed(1)} kg</span>
+                <span>Next Milestone: <strong style={{ color: "#fff" }}>{nextTier}</strong> ({target.toFixed(1)} kg)</span>
+              </div>
+
+              <div style={{ background: "rgba(6, 182, 212, 0.04)", border: "1px solid rgba(6, 182, 212, 0.15)", borderRadius: "8px", padding: "12px", textAlign: "left", fontSize: "12px", color: "var(--text-secondary)", marginBottom: "24px" }}>
+                🍃 <strong>Did you know?</strong> Every shipment scheduled via our green electric routing saves approximately <strong>0.45 kg of CO₂</strong> per kilogram of cargo, compared to traditional diesel dispatches.
+              </div>
+
+              <button 
+                onClick={() => {
+                  alert(`📜 Generating Eco-Merchant Offset Certificate for ${user?.name || "Member"}.`);
+                }}
+                className="btn-primary" 
+                style={{ width: "100%", background: `linear-gradient(135deg, ${tierColor}, var(--accent))`, border: "none", padding: "12px" }}
+              >
+                Claim Digital Offset Badge
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Premium Digital Invoice Preview Modal */}
+      {activeInvoiceParcel && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.85)", display: "flex",
+          alignItems: "center", justifyContent: "center", zIndex: 1000,
+          backdropFilter: "blur(6px)"
+        }}>
+          <div className="dark-card" style={{ maxWidth: "560px", width: "95%", padding: "28px", border: "1px solid rgba(255,255,255,0.08)", background: "#ffffff", color: "#1e293b", boxShadow: "0 25px 50px rgba(0,0,0,0.5)", borderRadius: "12px" }}>
+            
+            {/* Header / Invoice Branding */}
+            <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #f1f5f9", paddingBottom: "16px", marginBottom: "16px" }}>
+              <div>
+                <h3 style={{ fontSize: "18px", color: "#0f172a", fontFamily: "Poppins", fontWeight: 800, margin: 0 }}>COURIER NEPAL</h3>
+                <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Dispatch Receipt Invoice</span>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <span style={{ fontSize: "12px", color: "#0f172a", fontWeight: 700, display: "block" }}>Invoice #{activeInvoiceParcel.id}</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>Date: {new Date(activeInvoiceParcel.createdAt || Date.now()).toLocaleDateString()}</span>
+              </div>
+            </div>
+
+            {/* Address Columns */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", fontSize: "12px", marginBottom: "20px" }}>
+              <div>
+                <span style={{ color: "#64748b", fontWeight: 700, textTransform: "uppercase", fontSize: "10px", display: "block", marginBottom: "4px" }}>Sender Details</span>
+                <strong style={{ color: "#0f172a" }}>{user?.name || "Registered Merchant"}</strong>
+                <div style={{ color: "#475569", marginTop: "2px" }}>Phone: {user?.phone || "+977-98XXXXXXXX"}</div>
+                <div style={{ color: "#475569" }}>Tier: Gold Level Merchant</div>
+              </div>
+              <div>
+                <span style={{ color: "#64748b", fontWeight: 700, textTransform: "uppercase", fontSize: "10px", display: "block", marginBottom: "4px" }}>Consignment To</span>
+                <strong style={{ color: "#0f172a" }}>{activeInvoiceParcel.receiverName}</strong>
+                <div style={{ color: "#475569", marginTop: "2px" }}>Phone: {activeInvoiceParcel.receiverPhone}</div>
+                <div style={{ color: "#475569" }}>Address: {activeInvoiceParcel.receiverAddressLine1}, {activeInvoiceParcel.receiverCity || "Nepal Hub"}</div>
+              </div>
+            </div>
+
+            {/* Consignment Itemization Table */}
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: "20px" }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  <th style={{ textAlign: "left", padding: "8px", color: "#475569" }}>Description</th>
+                  <th style={{ textAlign: "center", padding: "8px", color: "#475569" }}>Weight</th>
+                  <th style={{ textAlign: "right", padding: "8px", color: "#475569" }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <td style={{ padding: "10px 8px" }}>
+                    <strong style={{ color: "#0f172a" }}>{activeInvoiceParcel.parcelType || "Standard Dispatch"}</strong>
+                    <div style={{ fontSize: "10px", color: "#64748b" }}>Status: {activeInvoiceParcel.status}</div>
+                  </td>
+                  <td style={{ textAlign: "center", padding: "10px 8px" }}>{activeInvoiceParcel.weightKg || 1.5} kg</td>
+                  <td style={{ textAlign: "right", padding: "10px 8px", fontWeight: 600 }}>NPR {150 + Math.round((activeInvoiceParcel.weightKg || 1.5) * 40)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={2} style={{ padding: "8px", textAlign: "right", color: "#64748b" }}>Green Routing Rebate:</td>
+                  <td style={{ padding: "8px", textAlign: "right", color: "#10b981", fontWeight: 600 }}>-NPR 20</td>
+                </tr>
+                <tr style={{ borderTop: "2px solid #e2e8f0", fontWeight: 800 }}>
+                  <td colSpan={2} style={{ padding: "10px 8px", textAlign: "right", color: "#0f172a" }}>Grand Total:</td>
+                  <td style={{ padding: "10px 8px", textAlign: "right", color: "#0f172a", fontSize: "14px" }}>
+                    NPR {130 + Math.round((activeInvoiceParcel.weightKg || 1.5) * 40)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Footer QR barcode representation */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #f1f5f9", paddingTop: "16px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                {/* Simulated QR Code using CSS grid */}
+                <div style={{ width: "42px", height: "42px", background: "#0f172a", padding: "4px", display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "2px" }}>
+                  {[1,0,1,1,0, 0,1,0,0,1, 1,0,1,1,1, 0,1,1,0,0, 1,0,0,1,1].map((val, idx) => (
+                    <div key={idx} style={{ background: val ? "#fff" : "#0f172a" }} />
+                  ))}
+                </div>
+                <div>
+                  <span style={{ fontSize: "9px", color: "#10b981", background: "rgba(16, 185, 129, 0.1)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700, display: "inline-block", marginBottom: "4px" }}>
+                    🌱 VERIFIED CARBON OFFSET
+                  </span>
+                  <div style={{ fontSize: "9px", color: "#64748b" }}>Scan code to track dispatch routing live.</div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button 
+                  onClick={() => window.print()}
+                  className="btn-primary" 
+                  style={{ background: "#0f172a", color: "#fff", border: "none", padding: "8px 16px", fontSize: "12px", cursor: "pointer", borderRadius: "6px" }}
+                >
+                  🖨️ Print Receipt
+                </button>
+                <button 
+                  onClick={() => setActiveInvoiceParcel(null)}
+                  className="btn-secondary" 
+                  style={{ borderColor: "#cbd5e1", color: "#64748b", padding: "8px 16px", fontSize: "12px", cursor: "pointer", borderRadius: "6px" }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
