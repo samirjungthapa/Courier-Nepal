@@ -1,6 +1,10 @@
 // Web Audio API Sound Synthesizer for high-tech premium sound feedback
 let audioCtx: AudioContext | null = null;
 
+/**
+ * Lazily instantiates and resumes the shared browser AudioContext instance.
+ * @returns The active AudioContext instance, or null if running server-side.
+ */
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   if (!audioCtx) {
