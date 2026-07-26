@@ -5,6 +5,10 @@ import { playBeep, playChime, playScribble, playSweep } from "../utils/audio";
 
 type ParcelData = any;
 
+/**
+ * DeliveryStaffDashboardPage renders the delivery driver portal, containing
+ * EcoVan loading visuals, Dijkstra dispatch route optimization, and touch signature pads.
+ */
 export default function DeliveryStaffDashboardPage() {
   const [parcels, setParcels] = useState<ParcelData[]>([]);
   const [loading, setLoading] = useState(false);
