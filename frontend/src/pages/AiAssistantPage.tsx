@@ -1,11 +1,30 @@
 import { useState, useRef, useEffect } from "react";
 import type { FormEvent } from "react";
+import { useSelector } from "react-redux";
+import type { RootState } from "../store/store";
 import { http } from "../api/http";
+import { playBeep, playSweep } from "../utils/audio";
 
 type ChatItem = { id: string; from: "user" | "assistant"; text: string };
 
 export default function AiAssistantPage() {
   const [activeTab, setActiveTab] = useState<"chat" | "route" | "predict">("chat");
+
+  // User and Parcel context for AI assistant
+  const user = useSelector((s: RootState) => s.auth.user);
+  const [userParcels, setUserParcels] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadParcels() {
+      try {
+        const res = await http.get("/api/parcels/history");
+        setUserParcels(res.data.parcels || []);
+      } catch (e) {
+        console.warn("Failed to load user parcels context:", e);
+      }
+    }
+    loadParcels();
+  }, []);
 
   // Tab 1: Chat State
   const [question, setQuestion] = useState("");
@@ -28,12 +47,20 @@ export default function AiAssistantPage() {
   const [optTime, setOptTime] = useState("");
   const routeCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Real-time Vehicle Routing Animation State
+  const [animProgress, setAnimProgress] = useState(0);
+  const [telemetryLogs, setTelemetryLogs] = useState<string[]>([]);
+
   // Tab 3: Predictor State
   const [weight, setWeight] = useState("1.5");
   const [volume, setVolume] = useState("Medium");
   const [fragile, setFragile] = useState(false);
   const [insurance, setInsurance] = useState(false);
   const [predictionResult, setPredictionResult] = useState<{ cost: number; days: number } | null>(null);
+  
+  // 3D Box Simulator canvas reference and rotation angle
+  const boxCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const angleRef = useRef(0);
 
   // Voice Search Mock
   const [isRecording, setIsRecording] = useState(false);
@@ -55,7 +82,7 @@ export default function AiAssistantPage() {
     setQuestion("");
 
     try {
-      const res = await http.post("/api/ai/ask", { question: q });
+      const res = await http.post("/api/ai/ask", { question: q, context: { user, parcels: userParcels } });
       const answer = res.data?.answer || "I'm processing your shipment data, please try again.";
       const assistantItem: ChatItem = { id: `${Date.now()}-a`, from: "assistant", text: answer };
       setItems((prev) => [...prev, assistantItem]);
@@ -159,7 +186,7 @@ export default function AiAssistantPage() {
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // Draw active pulsars on optimized route cities
+        // Draw active pulsars on optimized route hubs
         optimizedPath.forEach((name) => {
           const hub = hubs[name];
           ctx.fillStyle = "var(--cyan)";
@@ -167,11 +194,94 @@ export default function AiAssistantPage() {
           ctx.arc(hub.x, hub.y, 5, 0, Math.PI * 2);
           ctx.fill();
         });
+
+        // Draw Animated Vehicle (Truck / Drone) traversing the route
+        const seg = Math.floor(animProgress);
+        const frac = animProgress - seg;
+        
+        let vx = 0;
+        let vy = 0;
+
+        if (seg >= optimizedPath.length - 1) {
+          const finalHub = hubs[optimizedPath[optimizedPath.length - 1]];
+          vx = finalHub.x;
+          vy = finalHub.y;
+        } else {
+          const h1 = hubs[optimizedPath[seg]];
+          const h2 = hubs[optimizedPath[seg + 1]];
+          vx = h1.x + (h2.x - h1.x) * frac;
+          vy = h1.y + (h2.y - h1.y) * frac;
+        }
+
+        // Draw glowing vehicle marker
+        ctx.fillStyle = "var(--accent)";
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "var(--accent)";
+        ctx.beginPath();
+        ctx.arc(vx, vy, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Draw vehicle emoji inside
+        ctx.fillStyle = "#fff";
+        ctx.font = "10px sans-serif";
+        ctx.fillText("🚚", vx - 6, vy + 3);
       }
     };
 
     drawMap();
-  }, [activeTab, optimizedPath]);
+  }, [activeTab, optimizedPath, animProgress]);
+
+  // Telemetry animation sequence runner when optimizedPath changes
+  useEffect(() => {
+    if (optimizedPath.length <= 1) return;
+    setAnimProgress(0);
+    setTelemetryLogs([`[0.0s] 🛰️ Initializing green electric routing dispatch from ${optimizedPath[0]}...`]);
+
+    let start: number | null = null;
+    const durationPerSegment = 1000; // 1s per segment
+    const totalSegments = optimizedPath.length - 1;
+    const totalDuration = totalSegments * durationPerSegment;
+
+    let reqId: number;
+
+    const animate = (timestamp: number) => {
+      if (!start) start = timestamp;
+      const elapsed = timestamp - start;
+      const progressFraction = Math.min(totalSegments, (elapsed / totalDuration) * totalSegments);
+
+      setAnimProgress(progressFraction);
+
+      // Add telemetry logs dynamically
+      const currentSegment = Math.floor(progressFraction);
+      const secondsVal = (elapsed / 1000).toFixed(1);
+      
+      setTelemetryLogs(prev => {
+        const lastHubLogged = optimizedPath[currentSegment];
+        const newMsg = `[${secondsVal}s] 🚚 Reached checkpoint: ${lastHubLogged} Hub`;
+        if (!prev.includes(newMsg) && currentSegment > 0) {
+          return [...prev, newMsg];
+        }
+        return prev;
+      });
+
+      if (progressFraction < totalSegments) {
+        reqId = requestAnimationFrame(animate);
+      } else {
+        const finalSecs = (totalDuration / 1000).toFixed(1);
+        setTelemetryLogs(prev => {
+          const completionMsg = `[${finalSecs}s] ✅ Cargo successfully arrived at destination hub: ${optimizedPath[optimizedPath.length - 1]}!`;
+          if (!prev.includes(completionMsg)) {
+            return [...prev, completionMsg];
+          }
+          return prev;
+        });
+      }
+    };
+
+    reqId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(reqId);
+  }, [optimizedPath]);
 
   // Run route optimization algorithm simulation
   const handleOptimizeRoute = () => {
@@ -196,6 +306,7 @@ export default function AiAssistantPage() {
       setOptimizedPath(path);
       setOptTime(`${(1.2 + Math.random() * 0.9).toFixed(1)} hours (saved ${Math.floor(20 + Math.random() * 20)}% transit delay)`);
       setOptimizing(false);
+      playSweep();
     }, 1200);
   };
 
@@ -215,7 +326,116 @@ export default function AiAssistantPage() {
       cost: calculatedCost,
       days: Math.max(1, Math.round(days)),
     });
+    playBeep();
   };
+
+  // 3D wireframe box generator hook
+  useEffect(() => {
+    if (activeTab !== "predict" || !boxCanvasRef.current) return;
+    const canvas = boxCanvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    canvas.width = 300;
+    canvas.height = 200;
+
+    let reqId: number;
+
+    const drawBox = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      angleRef.current += 0.012; // Rotate
+      const angle = angleRef.current;
+
+      // Volumetric box sizing based on volume type
+      let w = 55, h = 55, d = 55;
+      if (volume === "Small") {
+        w = 80; h = 8; d = 50;
+      } else if (volume === "Medium") {
+        w = 60; h = 50; d = 60;
+      } else if (volume === "Large") {
+        w = 100; h = 75; d = 85;
+      }
+
+      // Weight expands volume slightly for visual aesthetic
+      const wtScale = Math.min(1.4, Math.max(0.8, parseFloat(weight) ? Math.log10(parseFloat(weight) + 1.2) * 1.1 : 1.0));
+      w *= wtScale;
+      h *= wtScale;
+      d *= wtScale;
+
+      const halfW = w / 2;
+      const halfH = h / 2;
+      const halfD = d / 2;
+
+      const vertices = [
+        { x: -halfW, y: -halfH, z: -halfD },
+        { x: halfW, y: -halfH, z: -halfD },
+        { x: halfW, y: halfH, z: -halfD },
+        { x: -halfW, y: halfH, z: -halfD },
+        { x: -halfW, y: -halfH, z: halfD },
+        { x: halfW, y: -halfH, z: halfD },
+        { x: halfW, y: halfH, z: halfD },
+        { x: -halfW, y: halfH, z: halfD }
+      ];
+
+      const rotated = vertices.map(v => {
+        // Rotate Y
+        let x1 = v.x * Math.cos(angle) - v.z * Math.sin(angle);
+        let z1 = v.x * Math.sin(angle) + v.z * Math.cos(angle);
+        // Rotate X
+        let y2 = v.y * Math.cos(0.35) - z1 * Math.sin(0.35);
+        let z2 = v.y * Math.sin(0.35) + z1 * Math.cos(0.35);
+
+        const distance = 250;
+        const scale = distance / (distance + z2);
+        return {
+          x: canvas.width / 2 + x1 * scale,
+          y: canvas.height / 2 + y2 * scale
+        };
+      });
+
+      const edges = [
+        [0, 1], [1, 2], [2, 3], [3, 0],
+        [4, 5], [5, 6], [6, 7], [7, 4],
+        [0, 4], [1, 5], [2, 6], [3, 7]
+      ];
+
+      // Draw futuristic grid background
+      ctx.strokeStyle = "rgba(6, 182, 212, 0.05)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < canvas.width; i += 25) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+      }
+      for (let i = 0; i < canvas.height; i += 25) {
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+      }
+
+      // Draw wireframe
+      ctx.strokeStyle = "var(--cyan)";
+      ctx.lineWidth = 1.8;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = "var(--cyan)";
+      
+      edges.forEach(([u, v]) => {
+        ctx.beginPath();
+        ctx.moveTo(rotated[u].x, rotated[u].y);
+        ctx.lineTo(rotated[v].x, rotated[v].y);
+        ctx.stroke();
+      });
+      ctx.shadowBlur = 0;
+
+      // Dimension CAD labels
+      ctx.fillStyle = "var(--text-muted)";
+      ctx.font = "9px monospace";
+      ctx.fillText(`L: ${w.toFixed(0)}mm`, 8, canvas.height - 30);
+      ctx.fillText(`W: ${d.toFixed(0)}mm`, 8, canvas.height - 18);
+      ctx.fillText(`H: ${h.toFixed(0)}mm`, 8, canvas.height - 6);
+
+      reqId = requestAnimationFrame(drawBox);
+    };
+
+    drawBox();
+    return () => cancelAnimationFrame(reqId);
+  }, [activeTab, volume, weight]);
 
   return (
     <div className="page-inner" style={{ maxWidth: "900px" }}>
@@ -292,7 +512,7 @@ export default function AiAssistantPage() {
                   const userItem: ChatItem = { id: `${Date.now()}-u`, from: "user", text: pText };
                   setItems((prev) => [...prev, userItem]);
                   try {
-                    const res = await http.post("/api/ai/ask", { question: pText });
+                    const res = await http.post("/api/ai/ask", { question: pText, context: { user, parcels: userParcels } });
                     const answer = res.data?.answer || "I'm processing your shipment data, please try again.";
                     const assistantItem: ChatItem = { id: `${Date.now()}-a`, from: "assistant", text: answer };
                     setItems((prev) => [...prev, assistantItem]);
@@ -406,11 +626,33 @@ export default function AiAssistantPage() {
             )}
           </div>
 
-          {/* Canvas map viewer */}
-          <div className="dark-card" style={{ display: "flex", flexDirection: "column", gap: "16px", background: "rgba(15, 23, 42, 0.5)", alignItems: "center" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#fff", alignSelf: "flex-start" }}>Interactive Hub Network Map</h3>
-            <div style={{ background: "#070a13", borderRadius: "12px", border: "1px solid rgba(255, 255, 255, 0.04)", overflow: "hidden" }}>
-              <canvas ref={routeCanvasRef} style={{ display: "block" }} />
+          {/* Canvas map viewer & Telemetry Console */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div className="dark-card" style={{ display: "flex", flexDirection: "column", gap: "16px", background: "rgba(15, 23, 42, 0.5)", alignItems: "center" }}>
+              <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#fff", alignSelf: "flex-start" }}>Interactive Hub Network Map</h3>
+              <div style={{ background: "#070a13", borderRadius: "12px", border: "1px solid rgba(255, 255, 255, 0.04)", overflow: "hidden" }}>
+                <canvas ref={routeCanvasRef} style={{ display: "block" }} />
+              </div>
+            </div>
+
+            {/* Real-time telemetry console */}
+            <div className="dark-card" style={{ background: "rgba(7, 10, 19, 0.6)", border: "1px solid rgba(255, 255, 255, 0.06)", fontFamily: "monospace", padding: "16px", borderRadius: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid rgba(255, 255, 255, 0.06)", paddingBottom: "8px", marginBottom: "12px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--accent)" }}>📡 LIVE TELEMETRY FEED</span>
+                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Electric Route Dispatch</span>
+              </div>
+              <div style={{ minHeight: "100px", maxHeight: "150px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px", color: "#10b981" }}>
+                {telemetryLogs.length === 0 ? (
+                  <span style={{ color: "var(--text-muted)" }}>Awaiting Dijkstra computation routing sequence...</span>
+                ) : (
+                  telemetryLogs.map((log, idx) => (
+                    <div key={idx} style={{ display: "flex", gap: "8px" }}>
+                      <span>&gt;</span>
+                      <span>{log}</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -471,24 +713,29 @@ export default function AiAssistantPage() {
             </button>
           </div>
 
-          {/* Results dashboard display */}
-          <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.5)", display: "flex", flexDirection: "column", justifyContent: "center", padding: "40px" }}>
+          {/* Results dashboard display & 3D Box Simulator */}
+          <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.5)", display: "flex", flexDirection: "column", gap: "20px", padding: "30px", alignItems: "center" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#fff", alignSelf: "flex-start" }}>📦 Volumetric 3D Package Simulator</h3>
+            <div style={{ background: "#070a13", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.04)", overflow: "hidden", width: "100%", display: "flex", justifyContent: "center" }}>
+              <canvas ref={boxCanvasRef} style={{ display: "block" }} />
+            </div>
+
             {predictionResult ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                <div style={{ textAlign: "center" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--cyan)", textTransform: "uppercase" }}>Predicted Pricing</span>
-                  <div style={{ fontSize: "40px", fontWeight: 800, color: "#fff", marginTop: "4px" }}>NPR {predictionResult.cost}</div>
-                </div>
-                <div style={{ textAlign: "center", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "20px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" }}>Estimated Delivery Delay</span>
-                  <div style={{ fontSize: "36px", fontWeight: 800, color: "#fff", marginTop: "4px" }}>{predictionResult.days} Business Days</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "16px" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--cyan)", textTransform: "uppercase" }}>Predicted Pricing</span>
+                    <div style={{ fontSize: "28px", fontWeight: 800, color: "#fff", marginTop: "4px" }}>NPR {predictionResult.cost}</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" }}>Est. Transit Time</span>
+                    <div style={{ fontSize: "28px", fontWeight: 800, color: "#fff", marginTop: "4px" }}>{predictionResult.days} Days</div>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div style={{ textAlign: "center", color: "var(--text-muted)" }}>
-                <span style={{ fontSize: "48px", display: "block", marginBottom: "12px" }}>🤖</span>
-                <h3>Awaiting Input Parameters</h3>
-                <p style={{ fontSize: "12px", marginTop: "6px" }}>Configure weight and priorities, then tap the predictor button.</p>
+              <div style={{ textAlign: "center", color: "var(--text-muted)", width: "100%", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <p style={{ fontSize: "11px" }}>Awaiting input configuration for pricing & transit estimation.</p>
               </div>
             )}
           </div>
