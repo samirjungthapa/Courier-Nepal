@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { http } from "../api/http";
 import StatusBadge from "../components/ui/StatusBadge";
+import { playBeep, playChime, playScribble, playSweep } from "../utils/audio";
 
 type ParcelData = any;
 
@@ -13,6 +14,14 @@ export default function DeliveryStaffDashboardPage() {
   const [activeSignId, setActiveSignId] = useState<number | null>(null);
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // Scanned verified parcels for EcoVan loading simulation
+  const [scannedIds, setScannedIds] = useState<number[]>([]);
+
+  // Driver Route Optimization Canvas states
+  const driverRouteCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [driverRoutePath, setDriverRoutePath] = useState<string[]>([]);
+  const [optimizingDriverRoute, setOptimizingDriverRoute] = useState(false);
 
   // QR / Barcode Scanner Mock State
   const [scanInput, setScanInput] = useState("");
@@ -70,12 +79,14 @@ export default function DeliveryStaffDashboardPage() {
     const match = parcels.find(p => String(p.id) === scanInput);
     if (match) {
       setScanResult(`✅ Verified Parcel ID #${match.id}: Handover to ${match.receiverName} in ${match.receiverCity}.`);
+      setScannedIds(prev => prev.includes(match.id) ? prev : [...prev, match.id]);
+      playBeep();
     } else {
       setScanResult("❌ Scanner Error: Parcel ID not found in dispatch manifest.");
     }
   };
 
-  // Canvas drawing functions for Signature Pad
+  // Canvas drawing functions for Signature Pad (Mouse)
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = sigCanvasRef.current;
     if (!canvas) return;
@@ -90,6 +101,7 @@ export default function DeliveryStaffDashboardPage() {
     ctx.beginPath();
     ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
     setIsDrawing(true);
+    playScribble();
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -102,6 +114,42 @@ export default function DeliveryStaffDashboardPage() {
     const rect = canvas.getBoundingClientRect();
     ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
     ctx.stroke();
+    if (Math.random() < 0.15) playScribble();
+  };
+
+  // Canvas drawing functions for Signature Pad (Touch Screen)
+  const startDrawingTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const canvas = sigCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    ctx.beginPath();
+    ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+    setIsDrawing(true);
+    playScribble();
+  };
+
+  const drawTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    const canvas = sigCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+    ctx.stroke();
+    if (Math.random() < 0.15) playScribble();
   };
 
   const stopDrawing = () => {
@@ -117,9 +165,126 @@ export default function DeliveryStaffDashboardPage() {
   };
 
   const saveSignature = (parcelId: number) => {
-    alert(`✍️ Delivery Signature registered successfully for Parcel #${parcelId}!`);
     updateStatus(parcelId, "DELIVERED");
     setActiveSignId(null);
+    playChime();
+    alert(`✍️ Delivery Signature registered successfully for Parcel #${parcelId}!`);
+  };
+
+  // Driver route canvas drawing hook
+  useEffect(() => {
+    if (!driverRouteCanvasRef.current) return;
+    const canvas = driverRouteCanvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const width = (canvas.width = 400);
+    const height = (canvas.height = 180);
+
+    const hubs: Record<string, { x: number; y: number }> = {
+      Kathmandu: { x: 200, y: 90 },
+      Lalitpur: { x: 220, y: 110 },
+      Hetauda: { x: 180, y: 140 },
+      Birgunj: { x: 170, y: 165 },
+      Pokhara: { x: 120, y: 70 },
+      Butwal: { x: 90, y: 110 },
+      Nepalgunj: { x: 40, y: 60 },
+      Biratnagar: { x: 350, y: 140 },
+      Itahari: { x: 330, y: 110 },
+    };
+
+    // Draw map background
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw all background nodes
+    Object.keys(hubs).forEach((name) => {
+      const hub = hubs[name];
+      ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
+      ctx.beginPath();
+      ctx.arc(hub.x, hub.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Draw connections
+    ctx.strokeStyle = "rgba(255,255,255,0.02)";
+    ctx.lineWidth = 1;
+    const keys = Object.keys(hubs);
+    for (let i = 0; i < keys.length; i++) {
+      for (let j = i + 1; j < keys.length; j++) {
+        const dist = Math.hypot(hubs[keys[i]].x - hubs[keys[j]].x, hubs[keys[i]].y - hubs[keys[j]].y);
+        if (dist < 100) {
+          ctx.beginPath(); ctx.moveTo(hubs[keys[i]].x, hubs[keys[i]].y); ctx.lineTo(hubs[keys[j]].x, hubs[keys[j]].y); ctx.stroke();
+        }
+      }
+    }
+
+    // Identify active delivery points (receiver cities of active dispatches)
+    const activeCities = Array.from(new Set(
+      parcels
+        .filter(p => p.status !== "DELIVERED" && p.receiverCity)
+        .map(p => p.receiverCity)
+    )) as string[];
+
+    // Plot active destination hubs
+    activeCities.forEach((city) => {
+      const hub = hubs[city];
+      if (hub) {
+        // Red glowing pulse
+        ctx.fillStyle = "rgba(239, 68, 68, 0.2)";
+        ctx.beginPath(); ctx.arc(hub.x, hub.y, 16, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = "var(--error)";
+        ctx.beginPath(); ctx.arc(hub.x, hub.y, 6, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = "var(--text-secondary)";
+        ctx.font = "8px monospace";
+        ctx.fillText(city, hub.x - 20, hub.y - 10);
+      }
+    });
+
+    // Draw optimized sequence path
+    if (driverRoutePath.length > 1) {
+      ctx.strokeStyle = "var(--accent)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      const firstHub = hubs[driverRoutePath[0]];
+      if (firstHub) ctx.moveTo(firstHub.x, firstHub.y);
+      for (let i = 1; i < driverRoutePath.length; i++) {
+        const hub = hubs[driverRoutePath[i]];
+        if (hub) ctx.lineTo(hub.x, hub.y);
+      }
+      ctx.stroke();
+
+      // Draw sequence numbers
+      driverRoutePath.forEach((city, index) => {
+        const hub = hubs[city];
+        if (hub) {
+          ctx.fillStyle = "#fff";
+          ctx.beginPath(); ctx.arc(hub.x, hub.y, 8, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#000";
+          ctx.font = "bold 8px sans-serif";
+          ctx.fillText(String(index + 1), hub.x - 3, hub.y + 3);
+        }
+      });
+    }
+  }, [parcels, driverRoutePath]);
+
+  const handleOptimizeDriverRoute = () => {
+    setOptimizingDriverRoute(true);
+    setTimeout(() => {
+      // Find receiver cities of all active parcels
+      const cities = Array.from(new Set(
+        parcels
+          .filter(p => p.status !== "DELIVERED" && p.receiverCity)
+          .map(p => p.receiverCity)
+      )) as string[];
+
+      // Formulate path: start from Kathmandu, then append other cities
+      const path = ["Kathmandu", ...cities];
+      setDriverRoutePath(path);
+      setOptimizingDriverRoute(false);
+      playSweep();
+    }, 1000);
   };
 
   return (
@@ -150,8 +315,10 @@ export default function DeliveryStaffDashboardPage() {
         </div>
       </div>
 
-      {/* Barcode Scanner simulator */}
+      {/* Driver Operations Console Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "28px", marginBottom: "36px" }}>
+        
+        {/* Card 1: Scanner */}
         <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.5)", display: "flex", flexDirection: "column", gap: "16px" }}>
           <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#fff" }}>📷 Digital QR / Barcode Scanner</h3>
           <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Verify and accept parcels in your container instantly by scanning their logistics IDs.</p>
@@ -179,6 +346,62 @@ export default function DeliveryStaffDashboardPage() {
             </div>
           )}
         </div>
+
+        {/* Card 2: EcoVan Cargo Loader */}
+        <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.5)", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#fff" }}>🚐 EcoVan Container Loading visualizer</h3>
+            <span style={{ fontSize: "10px", color: "var(--cyan)", background: "rgba(6, 182, 212, 0.08)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+              {scannedIds.length}/8 Slots Loaded
+            </span>
+          </div>
+          <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Allocations and container weights are adjusted in real-time as dispatches verify.</p>
+          
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", background: "rgba(7, 10, 19, 0.4)", padding: "16px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.04)" }}>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((slotIdx) => {
+              const isLoaded = scannedIds.length >= slotIdx;
+              return (
+                <div 
+                  key={slotIdx} 
+                  style={{ 
+                    height: "45px", 
+                    borderRadius: "6px", 
+                    background: isLoaded ? "linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(6, 182, 212, 0.2))" : "rgba(255,255,255,0.02)", 
+                    border: isLoaded ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(255,255,255,0.04)", 
+                    display: "flex", 
+                    flexDirection: "column",
+                    alignItems: "center", 
+                    justifyContent: "center",
+                    gap: "2px",
+                    transition: "all 0.3s ease"
+                  }}
+                >
+                  <span style={{ fontSize: "8px", color: "var(--text-muted)" }}>Slot {slotIdx}</span>
+                  <span style={{ fontSize: "12px" }}>{isLoaded ? "📦" : "⬜"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Card 3: Driver Sequence Optimizer Map */}
+        <div className="dark-card" style={{ background: "rgba(15, 23, 42, 0.5)", display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#fff" }}>🗺️ Dispatch Sequence Map</h3>
+            <button
+              onClick={handleOptimizeDriverRoute}
+              disabled={optimizingDriverRoute}
+              className="btn-primary"
+              style={{ background: "var(--gradient-primary)", border: "none", fontSize: "10px", padding: "6px 12px" }}
+            >
+              {optimizingDriverRoute ? "Analyzing..." : "Optimize Path"}
+            </button>
+          </div>
+          <div style={{ background: "#070a13", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.04)", overflow: "hidden" }}>
+            <canvas ref={driverRouteCanvasRef} style={{ display: "block" }} />
+          </div>
+        </div>
+
       </div>
 
       {/* Manifest Tasks List */}
@@ -305,6 +528,9 @@ export default function DeliveryStaffDashboardPage() {
                         onMouseMove={draw}
                         onMouseUp={stopDrawing}
                         onMouseLeave={stopDrawing}
+                        onTouchStart={startDrawingTouch}
+                        onTouchMove={drawTouch}
+                        onTouchEnd={stopDrawing}
                         style={{ display: "block", cursor: "crosshair" }}
                       />
                     </div>
