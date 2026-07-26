@@ -8,6 +8,10 @@ import { playChime } from "../utils/audio";
 
 type ParcelData = any;
 
+/**
+ * UserDashboardPage renders customer KPIs including carbon offset milestones,
+ * active parcel dispatches, loyalty rewards redemptions, and print invoice templates.
+ */
 export default function UserDashboardPage() {
   const user = useSelector((s: RootState) => s.auth.user);
   const [parcels, setParcels] = useState<ParcelData[]>([]);
