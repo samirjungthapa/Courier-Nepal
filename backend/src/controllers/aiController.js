@@ -11,8 +11,23 @@ function requireValidation(req) {
   }
 }
 
-function answerForQuestion(question) {
+function answerForQuestion(question, context = {}) {
   const q = (question || "").toLowerCase();
+  const user = context.user;
+  const parcels = context.parcels || [];
+
+  if (q.includes("my point") || q.includes("my reward")) {
+    const pts = user ? (user.points || 380) : 380;
+    return `You currently have ${pts} Loyalty Reward Points! You can redeem these on your dashboard for discount vouchers (100 points = 10% off, 250 points = 25% off).`;
+  }
+
+  if (q.includes("my package") || q.includes("my parcel") || q.includes("my shipment") || q.includes("my courier")) {
+    if (!parcels || parcels.length === 0) {
+      return "You do not have any recent shipments recorded on your account at the moment.";
+    }
+    const list = parcels.map(p => `Parcel #${p.id} (${p.parcelType || 'Standard'}) - Status: ${p.status} to ${p.receiverName}`).join(", ");
+    return `Here are your recent shipments: ${list}.`;
+  }
 
   if (q.includes("track") || q.includes("tracking") || q.includes("where is") || q.includes("status")) {
     return "To track your parcel, navigate to 'Track Parcel' page or check your 'Order History'. You can see details for transit checkpoints: Order Created → Picked Up → In Transit → Out for Delivery → Delivered.";
@@ -44,10 +59,23 @@ function answerForQuestion(question) {
 async function ask(req, res) {
   requireValidation(req);
   const question = req.body.question;
+  const context = req.body.context || {};
+  const user = context.user || null;
+  const parcels = context.parcels || [];
+  
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
   if (apiKey) {
     try {
+      let contextPrompt = "";
+      if (user) {
+        contextPrompt += `\nCurrently Logged-in User Profile:\n- Name: ${user.name}\n- Points Balance: ${user.points || 380} Points\n`;
+      }
+      if (parcels && parcels.length > 0) {
+        contextPrompt += `\nUser's Recent Consignments (Current Shipments):\n` + 
+          parcels.map(p => `- Parcel #${p.id} (${p.parcelType || 'Standard'}): Status: ${p.status}, Destination: ${p.receiverCity || 'N/A'}, Receiver: ${p.receiverName}, Weight: ${p.weightKg || 1.5}kg`).join("\n") + "\n";
+      }
+
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
@@ -68,7 +96,8 @@ Here is context about our platform:
 - Payments: eSewa, Khalti, or Cash on Delivery (COD).
 - Loyalty points: Awarded to users for successful shipments (Redeemable for discount vouchers).
 - Carbon offset tracking: Users offset CO2 emissions by using our green routing engine.
-Please answer the following user question in a friendly, concise manner:
+${contextPrompt}
+Please answer the user question in a friendly, concise manner. Incorporate their profile name, points, or recent shipments directly if they ask about their packages or account details:
 "${question}"`
                   }
                 ]
@@ -90,7 +119,7 @@ Please answer the following user question in a friendly, concise manner:
     }
   }
 
-  const answer = answerForQuestion(question);
+  const answer = answerForQuestion(question, context);
   return res.json({ answer: `[AI Assistant] ${answer}` });
 }
 
